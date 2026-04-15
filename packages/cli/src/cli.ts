@@ -54,12 +54,12 @@ const program = new Command();
 program
   .name("claude-doctor")
   .description(
-    "Diagnose your Claude Code sessions — analyzes transcripts for behavioral anti-patterns and generates AGENTS.md rules",
+    "Diagnose your Claude Code sessions. Analyzes transcripts for behavioral anti-patterns and generates rules for CLAUDE.md / AGENTS.md.",
   )
   .version("0.0.1")
   .argument("[session]", "Session ID or .jsonl path to check a specific session")
   .option("-p, --project <path>", "Filter to a specific project path")
-  .option("--rules", "Output AGENTS.md rules text")
+  .option("--rules", "Output rules for CLAUDE.md / AGENTS.md")
   .option("--save", "Save analysis model to .claude-doctor/")
   .option("--json", "Output as JSON")
   .option(

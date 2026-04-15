@@ -404,7 +404,7 @@ export const renderAnalyzeOutput = async (
   }
 
   if (report.suggestions.length > 0) {
-    lines.push(`${BOLD}Suggested AGENTS.md rules${RESET}`);
+    lines.push(`${BOLD}Suggested rules for CLAUDE.md / AGENTS.md${RESET}`);
     lines.push("");
     for (const suggestion of report.suggestions) {
       lines.push(`  ${YELLOW}→${RESET} ${suggestion}`);

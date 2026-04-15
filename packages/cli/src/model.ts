@@ -87,7 +87,7 @@ export const loadModel = (projectRoot?: string): SavedModel | undefined => {
 const buildGuidanceDoc = (model: SavedModel): string => {
   const lines: string[] = [];
 
-  lines.push("# Claude Optimizer — Session Guidance");
+  lines.push("# Claude Doctor Session Guidance");
   lines.push("");
   lines.push(
     `Based on analysis of ${model.totalSessions} sessions across ${model.totalProjects} projects.`,

@@ -200,7 +200,7 @@ export const formatReportMarkdown = (report: AnalysisReport): string => {
   }
 
   if (report.suggestions.length > 0) {
-    lines.push("## Suggestions for AGENTS.md");
+    lines.push("## Suggested rules for CLAUDE.md / AGENTS.md");
     lines.push("");
     for (const suggestion of report.suggestions) {
       lines.push(`- ${suggestion}`);
