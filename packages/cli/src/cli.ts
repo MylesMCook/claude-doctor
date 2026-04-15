@@ -57,9 +57,8 @@ program
     "Diagnose your Claude Code sessions — analyzes transcripts for behavioral anti-patterns and generates AGENTS.md rules",
   )
   .version("0.0.1")
+  .argument("[session]", "Session ID or .jsonl path to check a specific session")
   .option("-p, --project <path>", "Filter to a specific project path")
-  .option("-s, --session <path>", "Check a specific session .jsonl file")
-  .option("--all", "Analyze all sessions across all projects")
   .option("--rules", "Output AGENTS.md rules text")
   .option("--save", "Save analysis model to .claude-doctor/")
   .option("--json", "Output as JSON")
@@ -68,113 +67,111 @@ program
     "Project root for .claude-doctor/",
   )
   .action(
-    async (options: {
-      project?: string;
-      session?: string;
-      all?: boolean;
-      rules?: boolean;
-      save?: boolean;
-      json?: boolean;
-      dir?: string;
-    }) => {
-      if (options.all || options.rules || options.save) {
+    async (
+      sessionArg: string | undefined,
+      options: {
+        project?: string;
+        rules?: boolean;
+        save?: boolean;
+        json?: boolean;
+        dir?: string;
+      },
+    ) => {
+      if (sessionArg) {
         const spinner = createSpinner();
-        spinner.start("Scanning transcripts…");
+        spinner.start("Checking session…");
 
-        const report = await generateReport(
-          options.project,
-          (current, total, projectName) => {
-            const shortName = projectName.replace(
-              /^Users\/[^/]+\/Developer\//,
-              "",
-            );
-            spinner.update(
-              `Analyzing ${shortName} (${current}/${total})`,
-            );
-          },
-        );
+        const isFilePath = sessionArg.includes("/") || sessionArg.endsWith(".jsonl");
+        let sessionFilePath: string;
+        let sessionId: string;
+
+        if (isFilePath) {
+          sessionFilePath = sessionArg;
+          sessionId = sessionArg.replace(/.*\//, "").replace(".jsonl", "");
+        } else {
+          const latest = findLatestSession(options.project);
+          if (!latest) {
+            spinner.stop();
+            console.error("No sessions found.");
+            process.exit(1);
+          }
+          const sessionDir = latest.filePath.replace(/\/[^/]+$/, "");
+          sessionFilePath = `${sessionDir}/${sessionArg}.jsonl`;
+          sessionId = sessionArg;
+        }
+
+        const savedModel = loadModel(options.dir);
+        const result = await checkSession(sessionFilePath, sessionId, savedModel);
+
+        if (options.json) {
+          spinner.stop();
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        const { turns, healthPercentage, summary } =
+          await buildSessionTimeline(sessionFilePath);
 
         spinner.stop();
 
-        if (options.save) {
-          const modelDir = saveModel(report, options.dir);
-          console.log(
-            `Model saved to ${modelDir}/ (${report.totalSessions} sessions, ${report.totalProjects} projects)`,
-          );
-          console.log("");
-        }
-
-        if (options.rules) {
-          const rulesText = generateAgentsRules(
-            report.projects,
-            report.totalSessions,
-          );
-          if (rulesText) {
-            console.log(rulesText);
-          } else {
-            console.log("No rules to generate — sessions look healthy.");
-          }
-          return;
-        }
-
-        if (options.json) {
-          console.log(formatReportJson(report));
-          return;
-        }
-
-        console.log(await renderAnalyzeOutput(report));
+        console.log(
+          renderCheckOutput(
+            result.sessionId,
+            turns,
+            healthPercentage,
+            summary,
+            result.activeSignals,
+            result.guidance,
+          ),
+        );
         return;
       }
 
       const spinner = createSpinner();
-      spinner.start("Checking session…");
+      spinner.start("Scanning transcripts…");
 
-      let sessionFilePath: string;
-      let sessionId: string;
-
-      if (options.session) {
-        sessionFilePath = options.session;
-        sessionId = options.session.replace(/.*\//, "").replace(".jsonl", "");
-      } else {
-        const latest = findLatestSession(options.project);
-        if (!latest) {
-          spinner.stop();
-          console.error("No sessions found.");
-          process.exit(1);
-        }
-        sessionFilePath = latest.filePath;
-        sessionId = latest.sessionId;
-      }
-
-      const savedModel = loadModel(options.dir);
-
-      const result = await checkSession(
-        sessionFilePath,
-        sessionId,
-        savedModel,
+      const report = await generateReport(
+        options.project,
+        (current, total, projectName) => {
+          const shortName = projectName.replace(
+            /^Users\/[^/]+\/Developer\//,
+            "",
+          );
+          spinner.update(
+            `Analyzing ${shortName} (${current}/${total})`,
+          );
+        },
       );
-
-      if (options.json) {
-        spinner.stop();
-        console.log(JSON.stringify(result, null, 2));
-        return;
-      }
-
-      const { turns, healthPercentage, summary } =
-        await buildSessionTimeline(sessionFilePath);
 
       spinner.stop();
 
-      console.log(
-        renderCheckOutput(
-          result.sessionId,
-          turns,
-          healthPercentage,
-          summary,
-          result.activeSignals,
-          result.guidance,
-        ),
-      );
+      if (options.save) {
+        const modelDir = saveModel(report, options.dir);
+        console.log(
+          `Model saved to ${modelDir}/ (${report.totalSessions} sessions, ${report.totalProjects} projects)`,
+        );
+        console.log("");
+      }
+
+      if (options.rules) {
+        const rulesText = generateAgentsRules(
+          report.projects,
+          report.totalSessions,
+        );
+        if (rulesText) {
+          console.log(rulesText);
+        } else {
+          console.log("No rules to generate — sessions look healthy.");
+        }
+        return;
+      }
+
+      if (options.json) {
+        console.log(formatReportJson(report));
+        return;
+      }
+
+      console.log(await renderAnalyzeOutput(report));
     },
   );
 

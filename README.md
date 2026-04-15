@@ -13,17 +13,17 @@ npm i -g claude-doctor
 ## Usage
 
 ```bash
-# Check health of your latest session
+# Analyze all sessions (default)
 claude-doctor
 
-# Check a specific project
-claude-doctor -p myproject
+# Check a specific session by ID
+claude-doctor a6f24d0a-ea2b-471b-a1ee-35d4d5895563
 
 # Check a specific session file
-claude-doctor -s ~/.claude/projects/.../SESSION_ID.jsonl
+claude-doctor ~/.claude/projects/.../SESSION_ID.jsonl
 
-# Analyze all sessions across all projects
-claude-doctor --all
+# Filter to a project
+claude-doctor -p myproject
 
 # Generate AGENTS.md rules from your history
 claude-doctor --rules
