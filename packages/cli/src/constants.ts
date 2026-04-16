@@ -1,4 +1,5 @@
 export const CLAUDE_PROJECTS_DIR = ".claude/projects";
+export const CODEX_SESSIONS_DIR = ".codex/sessions";
 
 export const ABANDONMENT_WINDOW_MS = 30 * 60 * 1000;
 export const SHORT_SESSION_THRESHOLD = 3;
@@ -150,6 +151,9 @@ export const EDIT_TOOL_NAMES = [
   "edit_file",
   "str_replace_editor",
   "insert_content",
+  // Codex tool names
+  "apply_patch",
+  "create_file",
 ];
 
 export const READ_TOOL_NAMES = [
@@ -163,6 +167,9 @@ export const READ_TOOL_NAMES = [
   "search_files",
   "list_files",
   "LS",
+  // Codex tool names
+  "shell",
+  "read_file",
 ];
 
 export const CORRECTION_PATTERNS = [
