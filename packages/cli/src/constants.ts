@@ -167,9 +167,6 @@ export const READ_TOOL_NAMES = [
   "search_files",
   "list_files",
   "LS",
-  // Codex tool names
-  "shell",
-  "read_file",
 ];
 
 export const CORRECTION_PATTERNS = [

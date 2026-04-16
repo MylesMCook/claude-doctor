@@ -16,13 +16,18 @@ interface CodexRolloutLine {
   payload: Record<string, unknown>;
 }
 
-const isCodexFormat = (firstLine: Record<string, unknown>): boolean =>
-  firstLine.type === "session_meta" ||
-  (firstLine.type === "response_item" && "payload" in firstLine) ||
-  firstLine.type === "turn_context" ||
-  firstLine.type === "event_msg";
+const isCodexFormat = (firstLine: Record<string, unknown>): boolean => {
+  const { type } = firstLine;
+  if (type === "turn_context" || type === "event_msg") return true;
+  if (type === "session_meta" && typeof (firstLine as Record<string, Record<string, unknown>>).payload?.cwd === "string") return true;
+  if (type === "response_item" && "payload" in firstLine) {
+    const pt = (firstLine as Record<string, Record<string, unknown>>).payload?.type;
+    return pt === "message" || pt === "function_call" || pt === "function_call_output" || pt === "reasoning" || pt === "web_search_call";
+  }
+  return false;
+};
 
-const normalizeCodexEvent = (raw: CodexRolloutLine): TranscriptEvent | null => {
+const normalizeCodexEvent = (raw: CodexRolloutLine, sessionId: string): TranscriptEvent | null => {
   const { timestamp, type, payload } = raw;
 
   if (type === "session_meta" || type === "turn_context" || type === "event_msg") {
@@ -52,7 +57,7 @@ const normalizeCodexEvent = (raw: CodexRolloutLine): TranscriptEvent | null => {
         type: "user",
         message: { role: "user", content: textParts.join("\n") },
         timestamp,
-        sessionId: "",
+        sessionId,
       } as UserEvent;
     }
     return null;
@@ -81,7 +86,7 @@ const normalizeCodexEvent = (raw: CodexRolloutLine): TranscriptEvent | null => {
         type: "assistant",
         message: { role: "assistant", content: blocks },
         timestamp,
-        sessionId: "",
+        sessionId,
       } as AssistantEvent;
     }
     return null;
@@ -100,6 +105,14 @@ const normalizeCodexEvent = (raw: CodexRolloutLine): TranscriptEvent | null => {
       input = { raw: args };
     }
 
+    // Extract file_path from apply_patch headers (*** Update File: path, *** Add File: path, etc.)
+    if (name === "apply_patch" && typeof args === "string") {
+      const patchFileMatch = args.match(/\*\*\* (?:Update|Add|Delete) File:\s*(.+)/);
+      if (patchFileMatch) {
+        input.file_path = patchFileMatch[1].trim();
+      }
+    }
+
     return {
       type: "assistant",
       message: {
@@ -107,7 +120,7 @@ const normalizeCodexEvent = (raw: CodexRolloutLine): TranscriptEvent | null => {
         content: [{ type: "tool_use", name, input, id: callId } as ToolUseBlock],
       },
       timestamp,
-      sessionId: "",
+      sessionId,
     } as AssistantEvent;
   }
 
@@ -118,9 +131,7 @@ const normalizeCodexEvent = (raw: CodexRolloutLine): TranscriptEvent | null => {
     if (Array.isArray(output)) output = JSON.stringify(output);
     else if (typeof output !== "string") output = String(output ?? "");
     const outputStr = output as string;
-    const isError =
-      (payload.status as string) === "failed" ||
-      outputStr.toLowerCase().slice(0, 200).includes("error");
+    const isError = (payload.status as string) === "failed";
 
     return {
       type: "user",
@@ -136,7 +147,7 @@ const normalizeCodexEvent = (raw: CodexRolloutLine): TranscriptEvent | null => {
         ],
       },
       timestamp,
-      sessionId: "",
+      sessionId,
     } as UserEvent;
   }
 
@@ -153,6 +164,7 @@ export const parseTranscriptFile = async (
   const lineReader = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let isCodex: boolean | null = null;
+  const fileSessionId = filePath.replace(/.*[/\\]/, "").replace(/\.jsonl$/, "");
 
   for await (const line of lineReader) {
     if (!line.trim()) continue;
@@ -165,7 +177,7 @@ export const parseTranscriptFile = async (
       }
 
       if (isCodex) {
-        const normalized = normalizeCodexEvent(parsed as CodexRolloutLine);
+        const normalized = normalizeCodexEvent(parsed as CodexRolloutLine, fileSessionId);
         if (normalized) events.push(normalized);
       } else {
         events.push(parsed);

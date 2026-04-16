@@ -18,6 +18,10 @@ const decodeProjectName = (encodedName: string): string =>
 const encodeProjectName = (cwdPath: string): string =>
   cwdPath.replace(/^\//, "").replace(/\\/g, "-").replace(/\//g, "-").replace(/:/g, "");
 
+/** Normalize a project path for cross-source comparison (strip drive letter, lowercase, unify separators). */
+const normalizeProjectPath = (p: string): string =>
+  p.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/").replace(/^\//, "").toLowerCase();
+
 export const getProjectsDir = (): string =>
   path.join(os.homedir(), CLAUDE_PROJECTS_DIR);
 
@@ -61,8 +65,14 @@ const discoverCodexSessionFiles = (baseDir: string): string[] => {
   const results: string[] = [];
   if (!fs.existsSync(baseDir)) return results;
 
+  const visited = new Set<string>();
   const walk = (dir: string) => {
+    const realDir = fs.realpathSync(dir);
+    if (visited.has(realDir)) return;
+    visited.add(realDir);
+
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(fullPath);
@@ -218,9 +228,10 @@ export const indexAllProjects = async (
   // Codex sessions
   const codexProjects = await indexCodexProjects(projectFilter);
   for (const codexProject of codexProjects) {
-    // Merge with existing project if same path, otherwise append
+    // Merge with existing project if same normalized path, otherwise append
+    const codexNorm = normalizeProjectPath(codexProject.projectPath);
     const existing = projects.find(
-      (p) => p.projectPath === codexProject.projectPath,
+      (p) => normalizeProjectPath(p.projectPath) === codexNorm,
     );
     if (existing) {
       existing.sessions.push(...codexProject.sessions);
