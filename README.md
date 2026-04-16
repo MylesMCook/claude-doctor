@@ -1,20 +1,33 @@
 # claude-doctor
 
-Analyzes your `~/.claude/` transcripts for behavioral anti-patterns and generates rules for CLAUDE.md / AGENTS.md from your history.
+Analyzes your `~/.claude/` and `~/.codex/` transcripts for behavioral anti-patterns and generates rules for CLAUDE.md / AGENTS.md from your history.
 
-https://github.com/user-attachments/assets/cdeb6b05-f3e6-441b-8bc2-9fcce623d9fd
+Fork of [millionco/claude-doctor](https://github.com/millionco/claude-doctor) with Codex CLI session support and subagent session discovery.
 
 ## Install
 
-```bash
-npm i -g claude-doctor
-```
-
-Or run directly:
+From GitHub (this fork):
 
 ```bash
-npx claude-doctor
+npm i -g github:MylesMCook/claude-doctor
 ```
+
+Or clone and link locally:
+
+```bash
+git clone https://github.com/MylesMCook/claude-doctor.git
+cd claude-doctor
+pnpm install && pnpm build
+npm link
+```
+
+## What this fork adds
+
+- **Codex CLI sessions** -- auto-detects and analyzes `~/.codex/sessions/` rollout files alongside Claude Code transcripts
+- **Subagent sessions** -- discovers agent sessions in `<session-id>/subagents/` subdirectories (previously invisible)
+- **Cross-source merging** -- sessions from both tools for the same project are merged into one analysis
+- **Codex tool classification** -- `apply_patch`, `create_file`, `shell` correctly classified for thrashing/efficiency signals
+- **Patch file attribution** -- `apply_patch` headers parsed for file paths so edit-thrashing detection works
 
 ## Usage
 
@@ -27,6 +40,14 @@ claude-doctor --rules             # generate rules for CLAUDE.md / AGENTS.md
 claude-doctor --save              # save model to .claude-doctor/
 claude-doctor --json              # output as JSON
 ```
+
+## Session sources
+
+| Source | Location | Format |
+|---|---|---|
+| Claude Code | `~/.claude/projects/` | Native JSONL |
+| Claude Code subagents | `~/.claude/projects/<id>/subagents/` | Native JSONL |
+| Codex CLI | `~/.codex/sessions/YYYY/MM/DD/` | Rollout JSONL (auto-detected) |
 
 ## Signals
 
