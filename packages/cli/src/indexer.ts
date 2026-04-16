@@ -32,13 +32,29 @@ export const discoverProjects = (projectsDir: string): string[] => {
     .map((dirent) => dirent.name);
 };
 
-export const discoverSessions = (projectDir: string): string[] =>
-  fs
-    .readdirSync(projectDir)
-    .filter(
-      (fileName) =>
-        fileName.endsWith(".jsonl") && !fileName.startsWith("agent-"),
-    );
+export const discoverSessions = (projectDir: string): string[] => {
+  const results: string[] = [];
+
+  // Top-level session files
+  for (const entry of fs.readdirSync(projectDir, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+      results.push(entry.name);
+    }
+    // Walk into <session-id>/subagents/ for agent session files
+    if (entry.isDirectory()) {
+      const subagentsDir = path.join(projectDir, entry.name, "subagents");
+      if (fs.existsSync(subagentsDir)) {
+        for (const sub of fs.readdirSync(subagentsDir)) {
+          if (sub.endsWith(".jsonl")) {
+            results.push(path.join(entry.name, "subagents", sub));
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+};
 
 /** Recursively find all .jsonl files under the Codex sessions directory. */
 const discoverCodexSessionFiles = (baseDir: string): string[] => {
