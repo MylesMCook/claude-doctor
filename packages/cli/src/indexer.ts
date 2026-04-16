@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { CLAUDE_PROJECTS_DIR } from "./constants.js";
+import { CLAUDE_PROJECTS_DIR, CODEX_SESSIONS_DIR } from "./constants.js";
 import {
   parseTranscriptFile,
   extractUserMessages,
@@ -9,13 +9,24 @@ import {
   extractToolErrors,
   countInterrupts,
   getSessionTimeRange,
+  extractCodexCwd,
 } from "./parser.js";
 
 const decodeProjectName = (encodedName: string): string =>
   encodedName.replace(/-/g, "/").replace(/^\//, "");
 
+const encodeProjectName = (cwdPath: string): string =>
+  cwdPath.replace(/^\//, "").replace(/\\/g, "-").replace(/\//g, "-").replace(/:/g, "");
+
+/** Normalize a project path for cross-source comparison (strip drive letter, lowercase, unify separators). */
+const normalizeProjectPath = (p: string): string =>
+  p.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/").replace(/^\//, "").toLowerCase();
+
 export const getProjectsDir = (): string =>
   path.join(os.homedir(), CLAUDE_PROJECTS_DIR);
+
+export const getCodexSessionsDir = (): string =>
+  path.join(os.homedir(), CODEX_SESSIONS_DIR);
 
 export const discoverProjects = (projectsDir: string): string[] => {
   if (!fs.existsSync(projectsDir)) return [];
@@ -25,13 +36,55 @@ export const discoverProjects = (projectsDir: string): string[] => {
     .map((dirent) => dirent.name);
 };
 
-export const discoverSessions = (projectDir: string): string[] =>
-  fs
-    .readdirSync(projectDir)
-    .filter(
-      (fileName) =>
-        fileName.endsWith(".jsonl") && !fileName.startsWith("agent-"),
-    );
+export const discoverSessions = (projectDir: string): string[] => {
+  const results: string[] = [];
+
+  // Top-level session files
+  for (const entry of fs.readdirSync(projectDir, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+      results.push(entry.name);
+    }
+    // Walk into <session-id>/subagents/ for agent session files
+    if (entry.isDirectory()) {
+      const subagentsDir = path.join(projectDir, entry.name, "subagents");
+      if (fs.existsSync(subagentsDir)) {
+        for (const sub of fs.readdirSync(subagentsDir)) {
+          if (sub.endsWith(".jsonl")) {
+            results.push(path.join(entry.name, "subagents", sub));
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+};
+
+/** Recursively find all .jsonl files under the Codex sessions directory. */
+const discoverCodexSessionFiles = (baseDir: string): string[] => {
+  const results: string[] = [];
+  if (!fs.existsSync(baseDir)) return results;
+
+  const visited = new Set<string>();
+  const walk = (dir: string) => {
+    const realDir = fs.realpathSync(dir);
+    if (visited.has(realDir)) return;
+    visited.add(realDir);
+
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.name.endsWith(".jsonl")) {
+        results.push(fullPath);
+      }
+    }
+  };
+
+  walk(baseDir);
+  return results;
+};
 
 export const buildSessionMetadata = async (
   filePath: string,
@@ -65,6 +118,68 @@ export const buildSessionMetadata = async (
   };
 };
 
+/** Index Codex rollout sessions, grouped by cwd from session_meta. */
+const indexCodexProjects = async (
+  projectFilter?: string,
+): Promise<ProjectMetadata[]> => {
+  const codexDir = getCodexSessionsDir();
+  const sessionFiles = discoverCodexSessionFiles(codexDir);
+
+  if (sessionFiles.length === 0) return [];
+
+  // Group files by cwd (extracted from session_meta)
+  const projectMap = new Map<string, string[]>();
+
+  for (const filePath of sessionFiles) {
+    try {
+      const cwd = await extractCodexCwd(filePath);
+      const key = cwd ?? "unknown";
+      if (!projectMap.has(key)) projectMap.set(key, []);
+      projectMap.get(key)!.push(filePath);
+    } catch {
+      /* skip unreadable files */
+    }
+  }
+
+  const projects: ProjectMetadata[] = [];
+
+  for (const [cwd, files] of projectMap.entries()) {
+    const encodedName = encodeProjectName(cwd);
+    const decodedName = cwd.replace(/\\/g, "/").replace(/^\//, "");
+
+    if (projectFilter && !decodedName.includes(projectFilter)) continue;
+
+    const sessions: SessionMetadata[] = [];
+    for (const filePath of files) {
+      try {
+        const metadata = await buildSessionMetadata(
+          filePath,
+          decodedName,
+          encodedName,
+        );
+        sessions.push(metadata);
+      } catch {
+        /* skip unreadable session files */
+      }
+    }
+
+    if (sessions.length === 0) continue;
+
+    sessions.sort(
+      (left, right) => left.startTime.getTime() - right.startTime.getTime(),
+    );
+
+    projects.push({
+      projectPath: decodedName,
+      projectName: encodedName,
+      sessions,
+      totalSessions: sessions.length,
+    });
+  }
+
+  return projects;
+};
+
 export const indexAllProjects = async (
   projectFilter?: string,
 ): Promise<ProjectMetadata[]> => {
@@ -72,6 +187,7 @@ export const indexAllProjects = async (
   const projectDirs = discoverProjects(projectsDir);
   const projects: ProjectMetadata[] = [];
 
+  // Claude Code sessions
   for (const encodedName of projectDirs) {
     const decodedName = decodeProjectName(encodedName);
 
@@ -107,6 +223,25 @@ export const indexAllProjects = async (
       sessions,
       totalSessions: sessions.length,
     });
+  }
+
+  // Codex sessions
+  const codexProjects = await indexCodexProjects(projectFilter);
+  for (const codexProject of codexProjects) {
+    // Merge with existing project if same normalized path, otherwise append
+    const codexNorm = normalizeProjectPath(codexProject.projectPath);
+    const existing = projects.find(
+      (p) => normalizeProjectPath(p.projectPath) === codexNorm,
+    );
+    if (existing) {
+      existing.sessions.push(...codexProject.sessions);
+      existing.sessions.sort(
+        (left, right) => left.startTime.getTime() - right.startTime.getTime(),
+      );
+      existing.totalSessions = existing.sessions.length;
+    } else {
+      projects.push(codexProject);
+    }
   }
 
   projects.sort((left, right) => right.totalSessions - left.totalSessions);
