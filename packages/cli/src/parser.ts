@@ -16,8 +16,9 @@ interface CodexRolloutLine {
   payload: Record<string, unknown>;
 }
 
-const isCodexFormat = (firstLine: Record<string, unknown>): boolean => {
-  const { type } = firstLine;
+const isCodexFormat = (firstLine: unknown): boolean => {
+  if (typeof firstLine !== "object" || firstLine === null) return false;
+  const { type } = firstLine as Record<string, unknown>;
   if (type === "turn_context" || type === "event_msg") return true;
   if (type === "session_meta" && typeof (firstLine as Record<string, Record<string, unknown>>).payload?.cwd === "string") return true;
   if (type === "response_item" && "payload" in firstLine) {
@@ -63,7 +64,7 @@ const normalizeCodexEvent = (raw: CodexRolloutLine, sessionId: string): Transcri
     return null;
   }
 
-  // Developer/system messages — skip
+  // Developer messages — skip
   if (role === "developer") return null;
 
   // Assistant text messages

@@ -7,6 +7,7 @@ import {
   extractToolErrors,
   countInterrupts,
   getSessionTimeRange,
+  extractCodexCwd,
 } from "../src/parser.js";
 
 const fixture = (name: string) =>
@@ -164,6 +165,64 @@ describe("countInterrupts", () => {
       fixture("frustrated-session.jsonl"),
     );
     expect(countInterrupts(events)).toBe(1);
+  });
+});
+
+describe("Codex format support", () => {
+  it("auto-detects and parses Codex rollout JSONL", async () => {
+    const events = await parseTranscriptFile(fixture("codex-session.jsonl"));
+    expect(events.length).toBeGreaterThan(0);
+    // Developer messages should be skipped
+    const devEvents = events.filter(
+      (e) => e.type === "user" && typeof (e as any).message?.content === "string" && (e as any).message.content.includes("You are Codex"),
+    );
+    expect(devEvents.length).toBe(0);
+  });
+
+  it("extracts user messages from Codex sessions", async () => {
+    const events = await parseTranscriptFile(fixture("codex-session.jsonl"));
+    const messages = extractUserMessages(events);
+    expect(messages).toContain("Fix the login bug in auth.ts");
+    expect(messages).toContain("no that's wrong, the bug is in the session handler");
+  });
+
+  it("normalizes function_call to tool_use", async () => {
+    const events = await parseTranscriptFile(fixture("codex-session.jsonl"));
+    const toolUses = extractToolUses(events);
+    expect(toolUses.length).toBe(4);
+    expect(toolUses.map((t) => t.name)).toEqual(["shell", "apply_patch", "shell", "shell"]);
+  });
+
+  it("extracts file_path from apply_patch headers", async () => {
+    const events = await parseTranscriptFile(fixture("codex-session.jsonl"));
+    const toolUses = extractToolUses(events);
+    const patch = toolUses.find((t) => t.name === "apply_patch");
+    expect(patch?.input.file_path).toBe("src/auth.ts");
+  });
+
+  it("uses only payload.status for error detection", async () => {
+    const events = await parseTranscriptFile(fixture("codex-session.jsonl"));
+    const errorCount = extractToolErrors(events);
+    // Only the lint failure (status: "failed") should count, not "0 errors found"
+    expect(errorCount).toBe(1);
+  });
+
+  it("populates sessionId from filename", async () => {
+    const events = await parseTranscriptFile(fixture("codex-session.jsonl"));
+    const userEvent = events.find((e) => e.type === "user");
+    expect(userEvent?.sessionId).toBe("codex-session");
+  });
+});
+
+describe("extractCodexCwd", () => {
+  it("extracts cwd from Codex session_meta", async () => {
+    const cwd = await extractCodexCwd(fixture("codex-session.jsonl"));
+    expect(cwd).toBe("/home/user/project");
+  });
+
+  it("returns null for Claude Code sessions", async () => {
+    const cwd = await extractCodexCwd(fixture("happy-session.jsonl"));
+    expect(cwd).toBeNull();
   });
 });
 

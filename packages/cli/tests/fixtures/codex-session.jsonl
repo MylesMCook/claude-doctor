@@ -1,0 +1,13 @@
+{"timestamp":"2026-03-01T10:00:00.000Z","type":"session_meta","payload":{"id":"codex-test-001","timestamp":"2026-03-01T10:00:00.000Z","cwd":"/home/user/project","originator":"codex_cli","cli_version":"0.115.0","source":"cli","model_provider":"openai"}}
+{"timestamp":"2026-03-01T10:00:01.000Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"You are Codex, a coding agent."}]}}
+{"timestamp":"2026-03-01T10:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the login bug in auth.ts"}]}}
+{"timestamp":"2026-03-01T10:00:05.000Z","type":"response_item","payload":{"type":"function_call","call_id":"fc1","name":"shell","arguments":"{\"command\":\"cat src/auth.ts\"}"}}
+{"timestamp":"2026-03-01T10:00:06.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"fc1","output":"export function login() { return false; }"}}
+{"timestamp":"2026-03-01T10:00:10.000Z","type":"response_item","payload":{"type":"function_call","call_id":"fc2","name":"apply_patch","arguments":"*** Update File: src/auth.ts\n--- src/auth.ts\n+++ src/auth.ts\n@@ -1 +1 @@\n-export function login() { return false; }\n+export function login() { return true; }"}}
+{"timestamp":"2026-03-01T10:00:11.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"fc2","output":"Applied patch to src/auth.ts"}}
+{"timestamp":"2026-03-01T10:00:15.000Z","type":"response_item","payload":{"type":"function_call","call_id":"fc3","name":"shell","arguments":"{\"command\":\"npm test\"}"}}
+{"timestamp":"2026-03-01T10:00:20.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"fc3","output":"Tests passed: 12/12, 0 errors found","status":"completed"}}
+{"timestamp":"2026-03-01T10:00:25.000Z","type":"response_item","payload":{"type":"function_call","call_id":"fc4","name":"shell","arguments":"{\"command\":\"npm run lint\"}"}}
+{"timestamp":"2026-03-01T10:00:30.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"fc4","output":"Lint failed: 2 issues","status":"failed"}}
+{"timestamp":"2026-03-01T10:00:35.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I fixed the login bug. Tests pass but there are lint issues to address."}]}}
+{"timestamp":"2026-03-01T10:00:40.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"no that's wrong, the bug is in the session handler"}]}}
